@@ -256,8 +256,8 @@
   Parser
   (-graph-label [_] "*")
   (-children [_] #{p1})
-  (-parse-null [_] ['()])
-  (-derivative [_ c] (cat' (derivative p1 c) p1))
+  (-parse-null [_] [nil])
+  (-derivative [this c] (cat' (derivative p1 c) this))
   (-is-empty? [_] false)
   (-is-null? [_] (or (is-null? p1) (is-empty? p1)))
   (-compact [this] this)

@@ -20,6 +20,7 @@
   (is (= [[\a \b]] (parse (cat \a \b) "ab")))
   (is (= [[\a [\b \c]]] (parse (cat \a (cat \b \c)) "abc")))
   (is (= [[[\a \b] \c]] (parse (cat (cat \a \b) \c) "abc")))
+  (is (= [[\a [\a [\a nil]]]  (parse (star \a) "aaa")]))
 
   ;; Reducers
   (is (= [1] (parse (red \1 #(Integer/parseInt (str %))) "1")))
