@@ -8,13 +8,22 @@
 (deftest typecheck
   (is (check-ns 'parsing-with-derivatives.core)))
 
+(def left-recursive-as  (grammar->parser {:S (alt eps (cat :S \a))} :S))
+(def right-recursive-as (grammar->parser {:S (alt eps (cat \a :S))} :S))
+
+(defn graph-size-with [parser input]
+  (graph-size (full-derivative parser input)))
+
 (deftest parsing
   (is (= [\a] (parse \a "a")))
   (is (= [[\a \b]] (parse (cat \a \b) "ab")))
   (is (= [[\a \b]] (parse (cat \a \b) "ab")))
   (is (= [[\a [\b \c]]] (parse (cat \a (cat \b \c)) "abc")))
   (is (= [[[\a \b] \c]] (parse (cat (cat \a \b) \c) "abc")))
-  
+
+  ;; Reducers
+  (is (= [1] (parse (red \1 #(Integer/parseInt (str %))) "1")))
+
   ;; Atom as parser
   (is (= [\a] (parse (atom \a) "a")))
  
@@ -22,14 +31,12 @@
   (is (= [\a] (parse {:S \a} :S "a")))
   (is (= [[\a \b]] (parse {:S (cat \a \b)} :S "ab")))
 
-  ;; ;; left-recursive
-  (is (= [[[nil \a] \a]] 
-         (parse {:S (alt eps (cat :S \a))} :S "aa")))
+  ;; recursion
+  (is (= [[[nil \a] \a]] (parse left-recursive-as  "aa")))
+  (is (= [[\a [\a nil]]] (parse right-recursive-as "aa")))
 
-  ;; right-recursive
-  (is (= [[\a [\a nil]]] 
-         (parse {:S (alt eps (cat \a :S))} :S "aa")))
-
+  (is (> 15 (graph-size-with left-recursive-as (repeat 50 \a))))
+  (is (> 15 (graph-size-with right-recursive-as (repeat 50 \a))))
 )
 
 

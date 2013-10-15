@@ -27,6 +27,7 @@
 (def-alias Token Character)
 (def-alias ParseTree (Option (U Token (Seqable ParseTree))))
 (def-alias ParseForest (Seqable ParseTree))
+(def-alias ReducerFn [ParseTree -> ParseTree])
 
 (ann parse-tree [ParseTree ParseTree -> ParseTree])
 (defn parse-tree "Parse tree constructor" [x y]
@@ -59,7 +60,7 @@
 
 ;; parser constructors
 (declare empty eps eps* red)
-(declare ->Cat ->Alt ->Delta ->Star)
+(declare ->Cat ->Alt ->Delta ->Star ->Red)
 
 (ann cat [Parser Parser -> Cat])
 (defn cat [p1 p2] (->Cat p1 p2))
@@ -73,11 +74,15 @@
 (ann star [Parser -> Star])
 (defn star [p1] (->Star p1))
 
+(ann red [Parser ReducerFn -> Red])
+(defn red [p1 f] (->Red p1 f))
+
 ;; delayed parser constructors
 (defmacro cat' [p1 p2] `(->Cat (delay ~p1) (delay ~p2)))
 (defmacro alt' [p1 p2] `(->Alt (delay ~p1) (delay ~p2)))
 (defmacro delta' [p1] `(->Delta (delay ~p1)))
 (defmacro star' [p1] `(->Star (delay ~p1)))
+(defmacro red' [p1 f] `(->Red (delay ~p1) ~f))
 
 (ann graph-label [Parser -> (U String (Vec String))])
 (defn graph-label [this]
@@ -179,10 +184,6 @@
 (proxy-parser clojure.lang.Atom  "@" deref-parser)
 (proxy-parser clojure.lang.Delay "~" deref-parser)
 
-(ann is-null-singleton? [Parser -> Boolean])
-(defn is-null-singleton? [p]
-  (and (is-null? p) (= 1 (count (parse-null p)))))
-
 (ann-record Delta [p1 :- Parser])
 (defrecord Delta [p1]
   Parser
@@ -197,6 +198,10 @@
       (if (empty-coll? r1)
         empty
         (eps* r1)))))
+
+(ann is-null-singleton? [Parser -> Boolean])
+(defn is-null-singleton? [p]
+  (and (is-null? p) (= 1 (count (parse-null p)))))
 
 (ann-record Cat [p1 :- Parser, p2 :- Parser])
 (defrecord Cat [p1 p2]
@@ -218,8 +223,15 @@
     (cond
      ;; the below rule is bogus!
      ;; (and (is-null? p1) (is-null? p2)) (parse-null this)
-     ;; (is-null-singleton? p1) (red (compact p2) :cons (parse-null p1))
-     ;; (is-null-singleton? p2) (red (compact p1) :back (parse-null p2))
+
+     (is-null-singleton? p1)
+     (red (compact p2) (ann-form #(parse-tree (first (parse-null p1)) %)
+                                  ReducerFn))
+
+     (is-null-singleton? p2)
+     (red (compact p1) (ann-form #(parse-tree % (first (parse-null p2)))
+                                  ReducerFn))
+
      :default (cat' (compact p1) (compact p2))))
 )
 
@@ -259,39 +271,25 @@
        (drop 2)
        (first)))
 
-;; (ann do-red [(U :cons :back :concat) Any Any -> ISeq])
-;; (defn do-red [op arg1 arg2]
-;;   (case op
-;;     :cons (if (coll? arg2)
-;;             (cons arg1 arg2)
-;;             (list arg1 arg2))
-;;     :back  (list arg2 arg1)
-;;     :concat (concat arg1 arg2)))
-
-
-;; (defrecord Red [p1 op arg1]
-;;   Parser
-;;   (-graph-label [_] [(str "→" (graph/escape-string (str op)))
-;;                      (graph/escape-string (str arg1))])
-;;   (-children [_] #{p1})
-;;   (-parse-null [_]
-;;     (case op
-;;       :cons (into #{} (for [a arg1
-;;                             b (parse-null p1)]
-;;                         (list a b)))))
-;;   (-derivative [_ c] (red (derivative p1 c) op arg1))
-;;   (-is-empty? [_] (is-empty? p1))
-;;   (-is-null? [_] (is-null? p1))
-;;   (-compact [this]
-;;     (cond
-;;      (and (instance? Cat p1) (is-null? (:p1 p1)))
-;;      (red (compact (:p2 p1)) op arg1)
+(ann-record Red [p1 :- Parser, f :- ReducerFn])
+(defrecord Red [p1 f]
+  Parser
+  (-graph-label [_] [(str "→" (graph/escape-string (str (f \%))))])
+  (-children [_] #{p1})
+  (-parse-null [_] (map f (parse-null p1)))
+  (-derivative [_ c] (red (derivative p1 c) f))
+  (-is-empty? [_] (is-empty? p1))
+  (-is-null? [_] (is-null? p1))
+  (-compact [this]
+    (cond
+     ;; (and (instance? Cat p1) (is-null? (:p1 p1)))
+     ;; (red (compact (:p2 p1)) op arg1)
      
-;;      ;; (and (instance? Red p1) (= op (:op p1)))
-;;      ;; (comp-red this p1)
+     (instance? Red p1)
+     (red (compact (:p1 p1)) (comp (:f p1) f))
      
-;;      :default (red (compact p1) op arg1)))
-;; )
+     :default (red (compact p1) f)))
+)
 
 
 (ann graph-size [Parser -> AnyInteger])
@@ -303,9 +301,6 @@
   (view-graph 
    (graph/bfs children p) children 
    :node->descriptor (fn [n] {:label (graph-label n)})))
-
-;; (ann red [Parser Any Any -> Red])
-;; (defn red [p1 f l] (->Red p1 f l))
 
 (def-alias Grammar (Map Keyword (U Parser Keyword)))
 
@@ -320,20 +315,21 @@
       (swap! production-atom #(walk/postwalk-replace atomized-grammar %)))
     (atomized-grammar start-rule)))
 
+
+(ann full-derivative [Parser (Seqable Token) -> Parser])
+(defn full-derivative [parser input]
+  (if-let [c (first input)]
+    (let [d (derivative parser c)
+          d' (compact d)]
+      (recur d' (rest input)))
+    parser))
+
+
 (ann parse (Fn [Parser (Seqable Token) -> ParseForest]
                [Grammar Keyword (Seqable Token) -> ParseForest]))
 (defn parse
-  ([p input]
-     (if-let [c (first input)]
-       (let [d (derivative p c)
-             d' (compact d)]
-         (recur d (rest input)))
-       (do
-         ;;(view-parser-graph p)
-         (parse-null p))))
+  ([parser input]
+     (parse-null (full-derivative parser input)))
   ([g p input]
      (let [p (grammar->parser g p)]
        (parse p input))))
-
-
-
