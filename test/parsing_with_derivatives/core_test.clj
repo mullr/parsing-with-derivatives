@@ -37,7 +37,18 @@
   (is (= [[\a [\a nil]]] (parse right-recursive-as "aa")))
 
   (is (> 15 (graph-size-with left-recursive-as (repeat 50 \a))))
-  (is (> 15 (graph-size-with right-recursive-as (repeat 50 \a))))
-)
+  (is (> 15 (graph-size-with right-recursive-as (repeat 50 \a)))))
 
+(def expression
+  {:digit (reduce alt [\1 \2 \3 \4 \5 \6 \7 \8 \9 \0])
+   :number (red (cat :digit (star :digit))
+                #(Integer/parseInt (apply str (flatten %))))
+   :mult-op (alt \* \/)
+   :mult-expr (cat :number (cat :mult-op :number))}
+  )
 
+(deftest expression-test
+  (is (= [\1] (parse expression :digit "1")))
+  (is (= [12] (parse expression :number "12")))
+  (is (= [[12 [\* 13]]] (parse expression :mult-expr "12*13")))
+  )

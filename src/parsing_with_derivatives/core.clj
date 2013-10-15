@@ -286,7 +286,7 @@
      ;; (red (compact (:p2 p1)) op arg1)
      
      (instance? Red p1)
-     (red (compact (:p1 p1)) (comp (:f p1) f))
+     (red (compact (:p1 p1)) (comp f (:f p1)))
      
      :default (red (compact p1) f)))
 )
