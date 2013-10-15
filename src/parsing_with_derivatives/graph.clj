@@ -5,7 +5,7 @@
             [clojure.core.typed :refer :all]))
 
 ;; from http://hueypetersen.com/posts/2013/06/25/graph-traversal-with-clojure/
-(ann ^:no-check bfs (All [x] [(Fn [x -> (Seqable x)]) x -> (Seq x)]))
+(ann ^:no-check bfs (All [x] [(Fn [x -> (Seqable x)]) x -> (ISeq x)]))
 (defn bfs [neighbors-fn start]
   ((fn rec-bfs [explored frontier]
      (lazy-seq
