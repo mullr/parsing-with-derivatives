@@ -49,24 +49,25 @@
   )
 
 (def expression
-  {:digit- (reduce alt [\1 \2 \3])
-   :number- (red (plus :digit) #(Integer/parseInt (apply str %)))
+  [:expr :add-expr
+   :add-expr- (alt :mult-expr
+                   (label :add (cat :mult-expr (hide :add-op) :mult-expr)))
+   :add-op (alt \+ \-)
+   :mult-expr- (alt :value
+                    (label :mult (cat :value (hide :mult-op) :value)))
+   :mult-op (alt \* \/)
    :value- (alt :number
                 (cat (hide \() :add-expr (hide \))))
-   :mult-op- (alt \* \/)
-   :mult-expr- (alt :value
-                    (label :mult (cat :value :mult-op :value)))
-   :add-op- (alt \+ \-)
-   :add-expr- (alt :mult-expr
-                   (label :add (cat :mult-expr :add-op :mult-expr)))
-   :expr :add-expr})
+   :number- (red (plus :digit) #(Integer/parseInt (apply str %)))
+
+   :digit- (reduce alt [\1 \2 \3 \4 \5 \6 \7 \8 \9 \0])])
 
 (deftest expression-test
-  (are [str first-ast] (= [first-ast] (parse expression :expr str))
+  (are [str first-ast] (= [first-ast] (parse expression str))
     "1"       [:expr 1]
     "12"      [:expr 12]
-    "12*13"   [:expr [:mult 12 \* 13]]
-    "12+13"   [:expr [:add 12 \+ 13]]
-    "1*2+3"   [:expr [:add [:mult 1 \* 2] \+ 3]]
-    "1*(2+3)" [:expr [:mult 1 \* [:add 2 \+ 3]]]
+    "12*13"   [:expr [:mult 12 13]]
+    "12+13"   [:expr [:add 12 13]]
+    "1*2+3"   [:expr [:add [:mult 1 2] 3]]
+    "1*(2+3)" [:expr [:mult 1 [:add 2 3]]]
 ))
