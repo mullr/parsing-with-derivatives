@@ -304,6 +304,7 @@
    :node->descriptor (fn [n] {:label (graph-label n)})))
 
 (def-alias Grammar (Map Keyword (U Parser Keyword)))
+(def-alias GrammarVec (Vec (U Parser Keyword)))
 
 (ann ^:no-check grammar->parser [Grammar Keyword -> Parser])
 (defn grammar->parser
@@ -326,11 +327,13 @@
     parser))
 
 
-(ann parse (Fn [Parser (Seqable Token) -> ParseForest]
+(ann parse (Fn [(U Parser GrammarVec) (Seqable Token) -> ParseForest]
                [Grammar Keyword (Seqable Token) -> ParseForest]))
 (defn parse
   ([parser input]
-     (parse-null (full-derivative parser input)))
+     (if (vector? parser)
+       (parse (apply hash-map parser) (first parser) input)
+       (parse-null (full-derivative parser input))))
   ([g p input]
      (let [p (grammar->parser g p)]
        (parse p input))))
