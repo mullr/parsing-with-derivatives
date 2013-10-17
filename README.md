@@ -17,20 +17,21 @@ A grammar is defined as a map of alternating rule names and
 definitions. A rule name is a keyword, a definitions are formed of terminals
 and combinators. The first rule in the vector is the start rule.
 
-| Terminal        | Meaning             |
-|-----------------|---------------------|
-| eps             | Epsilon, the parser which acceps the empty string. |
-| <character>     | A character literal is a parser which accepts itself. |
-| <keyword>       | A reference to the named rule |
+| Terminal        | Meaning                                                      |
+|-----------------|--------------------------------------------------------------|
+| eps             | Epsilon, the parser which acceps the empty string.           |
+| *character*     | A character literal is a parser which accepts itself.        |
+| *keyword*       | A reference to the named rule.                               |
 
-| Combinator      | Meaning              |
-|-----------------|---------------------|
-| (cat p1 p2...)  | Concatentation, i.e. sequence. Variadic. |
-| (alt p1 p2)     | Alternation, a choice between two parsers. |
-| (star p1)       | Kleene star, zero or more of p1. |
-| (plus p1)       | Kleene plus, one oor more of p1. |
-| (red p1 f)      | Reduction, run the parse tree of p1 through f. |
-| (hide p1)       | Don't include the parse tree of p1. |
+| Combinator      | Meaning                                                      |
+|-----------------|--------------------------------------------------------------|
+| (cat p1 p2...)  | Concatentation, i.e. sequence. Variadic.                     |
+| (alt p1 p2)     | Alternation, a choice between two parsers.                   |
+| (star p1)       | Kleene star, zero or more of p1.                             |
+| (plus p1)       | Kleene plus, one oor more of p1.                             |
+| (red p1 f)      | Reduction, run the parse tree of p1 through f.               |
+| (label l p1)   | Label the parse tree of p1 with l, which should be a keyword. |
+| (hide p1)       | Don't include the parse tree of p1.                          |
 
 *TODO*: alt should be variadic as well
 
