@@ -2,8 +2,8 @@
 
 A Clojure implementation of the parsing with derivatives algorithm.
 
-This just barely works and is still lacking in the area of
-compaction. Reducers are not yet implemented. 
+This can parse expressions, but the parse tree is not very interesting
+yet. Check back later!
 
 ## Usage
 
