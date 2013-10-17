@@ -41,7 +41,7 @@
    :number (red (plus :digit) #(Integer/parseInt (apply str %)))
    :value (alt :number (cat \( :expr \)))
    :mult-op (alt \* \/)
-   :mult-expr (alt :value (cat :number :mult-op :number))
+   :mult-expr (alt :value (cat :value :mult-op :value))
    :add-op (alt \+ \-)
    :add-expr (alt :mult-expr (cat :mult-expr :add-op :mult-expr))
    :expr :add-expr
@@ -54,4 +54,5 @@
     "12*13" [12 \* 13]
     "12+13" [12 \+ 13]
     "1*2+3" [[1 \* 2] \+ 3]
+    "1*(2+3)" [1 \* [\( [2 \+ 3] \)]]
 ))
