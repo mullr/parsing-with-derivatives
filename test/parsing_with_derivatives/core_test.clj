@@ -8,50 +8,60 @@
   (are [parser str first-ast] (= [first-ast] (parse parser str))
     \a "a" \a
 
-    (cat \a \b)          "ab"  [\a \b]
-    (cat \a (cat \b \c)) "abc" [\a [\b \c]]
-    (cat (cat \a \b) \c) "abc" [[\a \b] \c]
+    [:S  \a] "a" [:S \a]
+    [:S- \a] "a" \a
+    [:S  (cat \a \b)] "ab" [:S \a \b]
+    [:S- (cat \a \b)] "ab" [\a \b]
 
-    (star \a) "aaa" [\a [\a [\a]]]
+    [:S  (cat \a :T)
+     :T  (cat \b \c)]     "abc" [:S \a [:T \b \c]]
+
+    [:S  (cat :T \c)
+     :T  (cat \a \b)]     "abc" [:S [:T \a \b] \c]
+
+    [:S  (cat :T \c)
+     :T- (cat \a \b)]     "abc" [:S \a \b \c]
+
+    [:S  (star \a)]       "aaa" [:S \a \a \a]
+    [:S  (plus \a)]       "aaa" [:S \a \a \a]
 
     ;; Atom as parser
     (atom \a) "a" \a
 
-    ;; grammar
-    [:S \a] "a" \a
-    [:S (cat \a \b)] "ab" [\a \b]
-
     ;; recursion
-    [:S (alt eps (cat :S \a))] "aa" [[\a] \a]
-    [:S (alt eps (cat \a :S))] "aa" [\a [\a]])
+    [:S (alt eps (cat :S \a))] "aa" [:S [:S \a] \a]
+    [:S (alt eps (cat \a :S))] "aa" [:S \a [:S \a]])
 
   ;; Reducers
   (is (= [1] (parse (red \1 #(Integer/parseInt (str %))) "1"))))
 
-(defn graph-size-with [parser input]
-  (graph-size (full-derivative parser input)))
+(defn graph-size-with [grammar input]
+  (graph-size (full-derivative (grammar->parser grammar) input)))
 
 (deftest graph-growth
-  (is (> 15 (graph-size-with left-recursive-as (repeat 25 \a))))
-  (is (> 15 (graph-size-with right-recursive-as (repeat 25 \a)))))
+  (is (> 15 (graph-size-with [:S (alt eps (cat :S \a))] (repeat 25 \a))))
+  (is (> 15 (graph-size-with [:S (alt eps (cat \a :S))] (repeat 25 \a))))
+  )
 
 (def expression
-  {:digit (reduce alt [\1 \2 \3 \4 \5 \6 \7 \8 \9 \0])
-   :number (red (plus :digit) #(Integer/parseInt (apply str %)))
-   :value (alt :number (cat \( :expr \)))
-   :mult-op (alt \* \/)
-   :mult-expr (alt :value (cat :value :mult-op :value))
-   :add-op (alt \+ \-)
-   :add-expr (alt :mult-expr (cat :mult-expr :add-op :mult-expr))
-   :expr :add-expr
-   })
+  {:digit- (reduce alt [\1 \2 \3 \4 \5 \6 \7 \8 \9 \0])
+   :number- (red (plus :digit) #(Integer/parseInt (apply str %)))
+   :value- (alt :number
+                (cat \( :add-expr \)))
+   :mult-op- (alt \* \/)
+   :mult-expr- (alt :value
+                    (label :mult (cat :value :mult-op :value)))
+   :add-op- (alt \+ \-)
+   :add-expr- (alt :mult-expr
+                   (label :add (cat :mult-expr :add-op :mult-expr)))
+   :expr :add-expr})
 
 (deftest expression-test
   (are [str first-ast] (= [first-ast] (parse expression :expr str))
-    "1"     1
-    "12"    12
-    "12*13" [12 \* 13]
-    "12+13" [12 \+ 13]
-    "1*2+3" [[1 \* 2] \+ 3]
-    "1*(2+3)" [1 \* [\( [2 \+ 3] \)]]
+    "1"       [:expr 1]
+    "12"      [:expr 12]
+    "12*13"   [:expr [:mult 12 \* 13]]
+    "12+13"   [:expr [:add 12 \+ 13]]
+    "1*2+3"   [:expr [:add [:mult 1 \* 2] \+ 3]]
+    "1*(2+3)" [:expr [:mult 1 \* \( [:add 2 \+ 3] \)]]
 ))

@@ -16,8 +16,8 @@
      (All [x] [(Seq x) -> (Seq x)]))
 (ann ^:no-check clojure.core/partition-by 
      (All [x y] [[x -> y] (Seqable x) -> (Seq x)]))
-(ann ^:no-check clojure.core/drop
-     (All [x] [AnyInteger (Seqable x) -> (Seq x)]))
+(ann ^:no-check clojure.core/drop-last
+     (All [x] [(Seqable x) -> (Seq x)]))
 
 ;; The with-meta annotation that comes with core.typed doesn't work
 ;; with vectors. Use a looser one here.
@@ -27,8 +27,8 @@
 (ann ^:no-check parsing-with-derivatives.fixpoint/fix-memo
      (All [x y] [y [x -> y] -> [x -> y]]))
 
-(ann ^:no-check parse-tree [ParseTree ParseTree -> ParseTree])
-(defn parse-tree "Parse tree constructor" [x y]
+(ann ^:no-check make-parse-tree [ParseTree ParseTree -> ParseTree])
+(defn make-parse-tree "Parse tree constructor" [x y]
   (cond
    (= ::no-result x) [y]
    (= ::no-result y) [x]
@@ -51,9 +51,9 @@
 (ann cat (Fn [Parser Parser -> Cat]
              [Parser Parser Parser * -> Cat]))
 (defn cat
-  ([p1 p2] (->Cat p1 p2 false))
+  ([p1 p2] (->Cat p1 p2))
   ([p1 p2 & ps]
-  (cat p1 (reduce (ann-form #(->Cat %1 %2 true)
+  (cat p1 (reduce (ann-form #(->Cat %1 %2)
                             [Parser Parser -> Cat])
                   p2
                   ps))))
@@ -65,19 +65,19 @@
 (defn delta [p1] (->Delta p1))
 
 (ann star [Parser -> Star])
-(defn star [p1] (->Star p1 false))
+(defn star [p1] (->Star p1))
 
 (ann plus [Parser -> Parser])
-(defn plus [p1] (->Cat p1 (->Star p1 true) false))
+(defn plus [p1] (->Cat p1 (->Star p1)))
 
 (ann red [Parser ReducerFn -> Red])
 (defn red [p1 f] (->Red p1 f))
 
 ;; delayed parser constructors
-(defmacro cat' [p1 p2 merge-up] `(->Cat (delay ~p1) (delay ~p2) ~merge-up))
+(defmacro cat' [p1 p2] `(->Cat (delay ~p1) (delay ~p2)))
 (defmacro alt' [p1 p2] `(->Alt (delay ~p1) (delay ~p2)))
 (defmacro delta' [p1] `(->Delta (delay ~p1)))
-(defmacro star' [p1 merge-up] `(->Star (delay ~p1) ~merge-up))
+(defmacro star' [p1] `(->Star (delay ~p1)))
 (defmacro red' [p1 f] `(->Red (delay ~p1) ~f))
 
 (ann graph-label [Parser -> (U String (Vec String))])
@@ -203,19 +203,19 @@
 (defn is-null-singleton? [p]
   (and (is-null? p) (= 1 (count (parse-null p)))))
 
-(ann-record Cat [p1 :- Parser, p2 :- Parser, merge-up :- Boolean])
-(defrecord Cat [p1 p2 merge-up]
+(ann-record Cat [p1 :- Parser, p2 :- Parser])
+(defrecord Cat [p1 p2]
   Parser
-  (-graph-label [_] (if merge-up "cat-merge" "cat"))
+  (-graph-label [_] "cat")
   (-children [_] [p1 p2])
   (-parse-null [_]
     (for> :- ParseTree
           [t1 :- ParseTree (parse-null p1),
            t2 :- ParseTree (parse-null p2)]
-      (with-meta (parse-tree t1 t2) {:merge merge-up})))
+      (with-meta (make-parse-tree t1 t2) {:merge true})))
 
-  (-derivative [_ c] (alt (cat' (delta p1) (derivative p2 c) merge-up)
-                          (cat' (derivative p1 c) p2 merge-up)))
+  (-derivative [_ c] (alt (cat' (delta p1) (derivative p2 c))
+                          (cat' (derivative p1 c) p2)))
 
   (-is-empty? [_] (or (is-empty? p1) (is-empty? p2)))
   (-is-null? [_] (and (is-null? p1) (is-null? p2)))
@@ -225,16 +225,18 @@
      ;; (and (is-null? p1) (is-null? p2)) (parse-null this)
 
      (is-null-singleton? p1)
-     (red (compact p2) (ann-form #(with-meta (parse-tree (first (parse-null p1)) %)
-                                             {:merge merge-up})
-                                  ReducerFn))
+     (red (compact p2)
+          (ann-form #(with-meta (make-parse-tree (first (parse-null p1)) %)
+                       {:merge true})
+                    ReducerFn))
 
      (is-null-singleton? p2)
-     (red (compact p1) (ann-form #(with-meta (parse-tree % (first (parse-null p2)))
-                                             {:merge merge-up})
-                                  ReducerFn))
+     (red (compact p1)
+          (ann-form #(with-meta (make-parse-tree % (first (parse-null p2)))
+                       {:merge true})
+                    ReducerFn))
 
-     :default (cat' (compact p1) (compact p2) merge-up)))
+     :default (cat' (compact p1) (compact p2))))
 )
 
 (ann-record Alt [p1 :- Parser, p2 :- Parser])
@@ -253,25 +255,17 @@
      :default (alt' (compact p1) (compact p2))))
 )
 
-(ann-record Star [p1 :- Parser, merge-up :- boolean])
-(defrecord Star [p1 merge-up]
+(ann-record Star [p1 :- Parser])
+(defrecord Star [p1]
   Parser
   (-graph-label [_] "*")
   (-children [_] #{p1})
   (-parse-null [_] [::no-result])
-  (-derivative [this c] (cat' (derivative p1 c) this merge-up))
+  (-derivative [this c] (cat' (derivative p1 c) this))
   (-is-empty? [_] false)
   (-is-null? [_] (or (is-null? p1) (is-empty? p1)))
-  (-compact [this] (star' (compact p1) merge-up))
+  (-compact [this] (star' (compact p1)))
 )
-
-(ann ^:no-check fn-name [Any -> String])
-(defn fn-name [fn]
-  (->> (str fn)
-       (partition-by #{\$ \@})
-       (map (partial apply str))
-       (drop 2)
-       (first)))
 
 (ann-record Red [p1 :- Parser, f :- ReducerFn])
 (defrecord Red [p1 f]
@@ -306,23 +300,69 @@
    (graph/bfs children p) children 
    :node->descriptor (fn [n] {:label (graph-label n)})))
 
+
 (def-alias Grammar (Map Keyword (U Parser Keyword)))
 (def-alias GrammarVec (Vec (U Parser Keyword)))
 
-(ann ^:no-check grammar->parser [Grammar Keyword -> Parser])
+(ann ^:no-check grammar-vec?
+  [Any -> Boolean :filters {:then (is GrammarVec 0), :else (! GrammarVec 0)}])
+(defn grammar-vec? [x]
+  (and (vector? x) (keyword? (first x))))
+
+(ann label [Keyword Parser -> Red])
+(defn label [tag parser]
+  (red parser (fn> :- ParseTree [parse-tree :- ParseTree]
+                (if (= parse-tree ::no-result)
+                  ::no-result
+                  (make-parse-tree tag parse-tree)))))
+
+(ann drop-last-kw-char [Keyword -> Keyword])
+(defn drop-last-kw-char [kw]
+  (keyword (apply str (drop-last (name kw)))))
+
+(ann is-hidden-rule? [Keyword -> Boolean])
+(defn is-hidden-rule? [rule]
+  (= \- (last (name rule))))
+
+(ann normalize-rule [Keyword -> Keyword])
+(defn normalize-rule [rule]
+  (if (is-hidden-rule? rule)
+    (drop-last-kw-char rule)
+    rule))
+
+(ann ^:no-check grammar->parser
+     (Fn [GrammarVec -> Parser]
+         [Grammar Keyword -> Parser]))
 (defn grammar->parser
   "Turn a grammar using keywords for rules into a parser. Each rule
    gets an atom, allowing for recursion. " 
-  [grammar start-rule]
-  (let [atomized-grammar (into {} (for [[rule production] grammar]
-                                    [rule (atom production :meta {:rule-name rule})]))]
-    (doseq [[rule production-atom] atomized-grammar]
-      (swap! production-atom #(walk/postwalk-replace atomized-grammar %)))
-    (atomized-grammar start-rule)))
+  ([grammar-vec]
+     (grammar->parser (apply hash-map grammar-vec) (first grammar-vec)))
+  ([grammar start-rule]
+     (let [atomized-grammar
+           (into {} (for [[rule production] grammar]
+                      (if (is-hidden-rule? rule)
+                        (let [rule (drop-last-kw-char rule)]
+                          [rule (atom production
+                                      :meta {:rule-name rule})])
+                        [rule (atom (label rule production)
+                                    :meta {:rule-name rule})])))
+           start-rule (normalize-rule start-rule)]
+
+       (doseq [[rule production-atom] atomized-grammar]
+         (swap! production-atom #(walk/postwalk-replace atomized-grammar %)))
+       (atomized-grammar start-rule))))
+
+(ann coerce-parser [(U GrammarVec Parser) -> Parser])
+(defn coerce-parser [grammar-or-parser]
+  (if (grammar-vec? grammar-or-parser)
+    (grammar->parser grammar-or-parser)
+    grammar-or-parser))
 
 
 (ann full-derivative [Parser (Seqable Token) -> Parser])
 (defn full-derivative [parser input]
+  ;; (view-parser-graph parser)
   (if-let [c (first input)]
     (let [d (derivative parser c)
           d' (compact d)]
@@ -334,8 +374,7 @@
                [Grammar Keyword (Seqable Token) -> ParseForest]))
 (defn parse
   ([parser input]
-     (if (vector? parser)
-       (parse (apply hash-map parser) (first parser) input)
+     (let [parser (coerce-parser parser)]
        (parse-null (full-derivative parser input))))
   ([g p input]
      (let [p (grammar->parser g p)]

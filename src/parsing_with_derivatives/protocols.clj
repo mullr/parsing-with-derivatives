@@ -6,7 +6,11 @@
 ;; General parser types
 ;; In principle this whole library can be generic over the token type
 (def-alias Token Character)
-(def-alias ParseTree (Option (U Token (Seqable ParseTree) (Value :parsing-with-derivatives.core/no-result))))
+(def-alias Label Keyword)
+(def-alias ParseTree (Option (U Token
+                                Label
+                                (Seqable ParseTree)
+                                (Value :parsing-with-derivatives.core/no-result))))
 (def-alias ParseForest (Seqable ParseTree))
 (def-alias ReducerFn [ParseTree -> ParseTree])
 
