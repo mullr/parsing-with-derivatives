@@ -18,6 +18,10 @@
 (ann ^:no-check clojure.core/drop
      (All [x] [AnyInteger (Seqable x) -> (Seq x)]))
 
+;; The with-meta annotation that comes with core.typed doesn't work
+;; with vectors. Use a looser one here.
+(ann ^:no-check clojure.core/with-meta (All [x] [x (Map Keyword Any) -> x]))
+
 ;; Annotate internal libraries
 (ann ^:no-check parsing-with-derivatives.fixpoint/fix-memo
      (All [x y] [y [x -> y] -> [x -> y]]))
@@ -25,13 +29,19 @@
 ;; General parser types
 ;; In principle this whole library can be generic over the token type
 (def-alias Token Character)
-(def-alias ParseTree (Option (U Token (Seqable ParseTree))))
+(def-alias ParseTree (Option (U Token (Seqable ParseTree) (Value ::no-result))))
 (def-alias ParseForest (Seqable ParseTree))
 (def-alias ReducerFn [ParseTree -> ParseTree])
 
-(ann parse-tree [ParseTree ParseTree -> ParseTree])
+(ann ^:no-check parse-tree [ParseTree ParseTree -> ParseTree])
 (defn parse-tree "Parse tree constructor" [x y]
-  [x y])
+  (cond
+   (= ::no-result x) [y]
+   (= ::no-result y) [x]
+   (and (:merge (meta x)) (:merge (meta y))) (concat x y)
+   (:merge (meta x)) (concat x [y])
+   (:merge (meta y)) (cons x y)
+   :default [x y]))
 
 (ann-protocol Parser
   -graph-label [Parser -> (U String (Vec String))]
@@ -56,14 +66,21 @@
 (defn parser?
   "Parser type check; useful in assertions, for helping core.typed."
   [x]
-  (extends? Parser (type x)))
+  (extends? Parser (class x)))
 
 ;; parser constructors
 (declare empty eps eps* red)
 (declare ->Cat ->Alt ->Delta ->Star ->Red)
 
-(ann cat [Parser Parser -> Cat])
-(defn cat [p1 p2] (->Cat p1 p2))
+(ann cat (Fn [Parser Parser -> Cat]
+             [Parser Parser Parser * -> Cat]))
+(defn cat
+  ([p1 p2] (->Cat p1 p2 false))
+  ([p1 p2 & ps]
+  (cat p1 (reduce (ann-form #(->Cat %1 %2 true)
+                            [Parser Parser -> Cat])
+                  p2
+                  ps))))
 
 (ann alt [Parser Parser -> Alt])
 (defn alt [p1 p2] (->Alt p1 p2))
@@ -72,16 +89,19 @@
 (defn delta [p1] (->Delta p1))
 
 (ann star [Parser -> Star])
-(defn star [p1] (->Star p1))
+(defn star [p1] (->Star p1 false))
+
+(ann plus [Parser -> Parser])
+(defn plus [p1] (->Cat p1 (->Star p1 true) false))
 
 (ann red [Parser ReducerFn -> Red])
 (defn red [p1 f] (->Red p1 f))
 
 ;; delayed parser constructors
-(defmacro cat' [p1 p2] `(->Cat (delay ~p1) (delay ~p2)))
+(defmacro cat' [p1 p2 merge-up] `(->Cat (delay ~p1) (delay ~p2) ~merge-up))
 (defmacro alt' [p1 p2] `(->Alt (delay ~p1) (delay ~p2)))
 (defmacro delta' [p1] `(->Delta (delay ~p1)))
-(defmacro star' [p1] `(->Star (delay ~p1)))
+(defmacro star' [p1 merge-up] `(->Star (delay ~p1) ~merge-up))
 (defmacro red' [p1 f] `(->Red (delay ~p1) ~f))
 
 (ann graph-label [Parser -> (U String (Vec String))])
@@ -164,16 +184,17 @@
   (-is-null? [_] false)
   (-compact [this] this))
 
-(defmacro proxy-parser [type graph-label proxy-fn]
+(defmacro proxy-parser [type graph-label-fn proxy-fn]
   `(extend-protocol Parser 
      ~type
-     (-graph-label [this#] ~graph-label)
+     (-graph-label [this#] (~graph-label-fn this#))
      (-children [this#] [(~proxy-fn this#)])
      (-parse-null [this#] (parse-null (~proxy-fn this#)))
      (-derivative [this# c#] (derivative (~proxy-fn this#) c#))
      (-is-empty? [this#] (is-empty? (~proxy-fn this#)))
      (-is-null? [this#] (is-null? (~proxy-fn this#)))
-     (-compact [this#] (compact (~proxy-fn this#)))))
+     (-compact [this#] (compact (~proxy-fn this#)))
+))
 
 (ann deref-parser [(clojure.lang.IDeref Any) -> Parser])
 (defn deref-parser [r]
@@ -181,8 +202,8 @@
     (assert (parser? p) (str p " is not a parser"))
     p)) 
 
-(proxy-parser clojure.lang.Atom  "@" deref-parser)
-(proxy-parser clojure.lang.Delay "~" deref-parser)
+(proxy-parser clojure.lang.Atom  (fn [a] (str (:rule-name (meta a)))) deref-parser)
+(proxy-parser clojure.lang.Delay (fn [_] "~") deref-parser)
 
 (ann-record Delta [p1 :- Parser])
 (defrecord Delta [p1]
@@ -203,19 +224,19 @@
 (defn is-null-singleton? [p]
   (and (is-null? p) (= 1 (count (parse-null p)))))
 
-(ann-record Cat [p1 :- Parser, p2 :- Parser])
-(defrecord Cat [p1 p2]
+(ann-record Cat [p1 :- Parser, p2 :- Parser, merge-up :- Boolean])
+(defrecord Cat [p1 p2 merge-up]
   Parser
-  (-graph-label [_] "cat")
+  (-graph-label [_] (if merge-up "cat-merge" "cat"))
   (-children [_] [p1 p2])
   (-parse-null [_]
     (for> :- ParseTree
           [t1 :- ParseTree (parse-null p1),
            t2 :- ParseTree (parse-null p2)]
-          (parse-tree t1 t2)))
+      (with-meta (parse-tree t1 t2) {:merge merge-up})))
 
-  (-derivative [_ c] (alt (cat' (delta p1) (derivative p2 c))
-                          (cat' (derivative p1 c) p2)))
+  (-derivative [_ c] (alt (cat' (delta p1) (derivative p2 c) merge-up)
+                          (cat' (derivative p1 c) p2 merge-up)))
 
   (-is-empty? [_] (or (is-empty? p1) (is-empty? p2)))
   (-is-null? [_] (and (is-null? p1) (is-null? p2)))
@@ -225,14 +246,16 @@
      ;; (and (is-null? p1) (is-null? p2)) (parse-null this)
 
      (is-null-singleton? p1)
-     (red (compact p2) (ann-form #(parse-tree (first (parse-null p1)) %)
+     (red (compact p2) (ann-form #(with-meta (parse-tree (first (parse-null p1)) %)
+                                             {:merge merge-up})
                                   ReducerFn))
 
      (is-null-singleton? p2)
-     (red (compact p1) (ann-form #(parse-tree % (first (parse-null p2)))
+     (red (compact p1) (ann-form #(with-meta (parse-tree % (first (parse-null p2)))
+                                             {:merge merge-up})
                                   ReducerFn))
 
-     :default (cat' (compact p1) (compact p2))))
+     :default (cat' (compact p1) (compact p2) merge-up)))
 )
 
 (ann-record Alt [p1 :- Parser, p2 :- Parser])
@@ -251,16 +274,16 @@
      :default (alt' (compact p1) (compact p2))))
 )
 
-(ann-record Star [p1 :- Parser])
-(defrecord Star [p1]
+(ann-record Star [p1 :- Parser, merge-up :- boolean])
+(defrecord Star [p1 merge-up]
   Parser
   (-graph-label [_] "*")
   (-children [_] #{p1})
-  (-parse-null [_] [nil])
-  (-derivative [this c] (cat' (derivative p1 c) this))
+  (-parse-null [_] [::no-result])
+  (-derivative [this c] (cat' (derivative p1 c) this merge-up))
   (-is-empty? [_] false)
   (-is-null? [_] (or (is-null? p1) (is-empty? p1)))
-  (-compact [this] this)
+  (-compact [this] (star' (compact p1) merge-up))
 )
 
 (ann ^:no-check fn-name [Any -> String])
@@ -312,7 +335,7 @@
    gets an atom, allowing for recursion. " 
   [grammar start-rule]
   (let [atomized-grammar (into {} (for [[rule production] grammar]
-                                    [rule (atom production)]))]
+                                    [rule (atom production :meta {:rule-name rule})]))]
     (doseq [[rule production-atom] atomized-grammar]
       (swap! production-atom #(walk/postwalk-replace atomized-grammar %)))
     (atomized-grammar start-rule)))

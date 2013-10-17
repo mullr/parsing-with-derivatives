@@ -36,19 +36,26 @@
   (is (= [[[nil \a] \a]] (parse left-recursive-as  "aa")))
   (is (= [[\a [\a nil]]] (parse right-recursive-as "aa")))
 
-  (is (> 15 (graph-size-with left-recursive-as (repeat 50 \a))))
-  (is (> 15 (graph-size-with right-recursive-as (repeat 50 \a)))))
+  (is (> 15 (graph-size-with left-recursive-as (repeat 25 \a))))
+  (is (> 15 (graph-size-with right-recursive-as (repeat 25 \a))))
+)
 
 (def expression
   {:digit (reduce alt [\1 \2 \3 \4 \5 \6 \7 \8 \9 \0])
-   :number (red (cat :digit (star :digit))
-                #(Integer/parseInt (apply str (flatten %))))
+   :number (red (plus :digit) #(Integer/parseInt (apply str %)))
+   :value (alt :number (cat \( :expr \)))
    :mult-op (alt \* \/)
-   :mult-expr (cat :number (cat :mult-op :number))}
-  )
+   :mult-expr (alt :value (cat :number :mult-op :number))
+   :add-op (alt \+ \-)
+   :add-expr (alt :mult-expr (cat :mult-expr :add-op :mult-expr))
+   :expr :add-expr
+   })
 
 (deftest expression-test
-  (is (= [\1] (parse expression :digit "1")))
-  (is (= [12] (parse expression :number "12")))
-  (is (= [[12 [\* 13]]] (parse expression :mult-expr "12*13")))
-  )
+  (are [str first-ast] (= [first-ast] (parse expression :expr str))
+    "1"     1
+    "12"    12
+    "12*13" [12 \* 13]
+    "12+13" [12 \+ 13]
+    "1*2+3" [[1 \* 2] \+ 3]
+))
