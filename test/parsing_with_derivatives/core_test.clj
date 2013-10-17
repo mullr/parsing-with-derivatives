@@ -25,6 +25,11 @@
     [:S  (star \a)]       "aaa" [:S \a \a \a]
     [:S  (plus \a)]       "aaa" [:S \a \a \a]
 
+    [:S  (cat (hide \a) \b)] "ab" [:S \b]
+    [:S  (cat \a (hide \b))] "ab" [:S \a]
+    [:S  (cat \a (hide \b) \c)] "abc" [:S \a \c]
+    [:S  (cat (hide \a) \b (hide \c))] "abc" [:S \b]
+
     ;; Atom as parser
     (atom \a) "a" \a
 
@@ -44,10 +49,10 @@
   )
 
 (def expression
-  {:digit- (reduce alt [\1 \2 \3 \4 \5 \6 \7 \8 \9 \0])
+  {:digit- (reduce alt [\1 \2 \3])
    :number- (red (plus :digit) #(Integer/parseInt (apply str %)))
    :value- (alt :number
-                (cat \( :add-expr \)))
+                (cat (hide \() :add-expr (hide \))))
    :mult-op- (alt \* \/)
    :mult-expr- (alt :value
                     (label :mult (cat :value :mult-op :value)))
@@ -63,5 +68,5 @@
     "12*13"   [:expr [:mult 12 \* 13]]
     "12+13"   [:expr [:add 12 \+ 13]]
     "1*2+3"   [:expr [:add [:mult 1 \* 2] \+ 3]]
-    "1*(2+3)" [:expr [:mult 1 \* \( [:add 2 \+ 3] \)]]
+    "1*(2+3)" [:expr [:mult 1 \* [:add 2 \+ 3]]]
 ))

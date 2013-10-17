@@ -28,14 +28,16 @@
      (All [x y] [y [x -> y] -> [x -> y]]))
 
 (ann ^:no-check make-parse-tree [ParseTree ParseTree -> ParseTree])
-(defn make-parse-tree "Parse tree constructor" [x y]
-  (cond
-   (= ::no-result x) [y]
-   (= ::no-result y) [x]
-   (and (:merge (meta x)) (:merge (meta y))) (concat x y)
-   (:merge (meta x)) (concat x [y])
-   (:merge (meta y)) (cons x y)
-   :default [x y]))
+(defn make-parse-tree [x y]
+  (let [merge-x (:merge (meta x))
+        merge-y (:merge (meta y))]
+    (cond
+     (= ::no-result x) (if merge-y y [y])
+     (= ::no-result y) (if merge-x x [x])
+     (and merge-x merge-y) (concat x y)
+     merge-x (concat x [y])
+     merge-y (cons x y)
+     :default [x y])))
 
 (ann ^:no-check parser?
      [Any -> Boolean :filters {:then (is Parser 0), :else (! Parser 0)}])
@@ -273,8 +275,9 @@
   (-graph-label [_] [(str "→"
                           (try (graph/escape-string (pr-str (f \%)))
                                (catch Exception e "_")))])
-  (-children [_] #{p1})
-  (-parse-null [_] (map f (parse-null p1)))
+  (-children [_] [p1])
+  (-parse-null [_] (with-meta (map f (parse-null p1))
+                              {:merge true}))
   (-derivative [_ c] (red (derivative p1 c) f))
   (-is-empty? [_] (is-empty? p1))
   (-is-null? [_] (is-null? p1))
@@ -289,6 +292,19 @@
      :default (red (compact p1) f)))
 )
 
+(ann-record Hide [p1 :- Parser])
+(defrecord Hide [p1]
+  Parser
+  (-graph-label [_] "hide")
+  (-children [_] [p1])
+  (-parse-null [_] (if (is-null? p1) [::no-result] (parse-null p1)))
+  (-derivative [_ c] (->Hide (derivative p1 c)))
+  (-is-empty? [_] (is-empty? p1))
+  (-is-null? [_] (is-null? p1))
+  (-compact [this] (->Hide (compact p1)))
+)
+
+(defn hide [p1] (->Hide p1))
 
 (ann graph-size [Parser -> AnyInteger])
 (defn graph-size [p]
