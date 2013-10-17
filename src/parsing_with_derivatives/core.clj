@@ -140,7 +140,7 @@
 (ann-record Epsilon [val :- ParseForest])
 (defrecord Epsilon [val]
   Parser
-  (-graph-label [_] ["ε" (graph/escape-string (str val))])
+  (-graph-label [_] ["ε" (graph/escape-string (pr-str val))])
   (-children [_] #{})
   (-parse-null [_] val)
   (-derivative [_ c] empty)
@@ -274,7 +274,9 @@
 (ann-record Red [p1 :- Parser, f :- ReducerFn])
 (defrecord Red [p1 f]
   Parser
-  (-graph-label [_] [(str "→" (graph/escape-string (str (f \%))))])
+  (-graph-label [_] [(str "→"
+                          (try (graph/escape-string (str (f \%)))
+                               (catch Exception e "_")))])
   (-children [_] #{p1})
   (-parse-null [_] (map f (parse-null p1)))
   (-derivative [_ c] (red (derivative p1 c) f))
