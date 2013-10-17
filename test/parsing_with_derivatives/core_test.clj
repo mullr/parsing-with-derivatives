@@ -22,8 +22,8 @@
     [:S (cat \a \b)] "ab" [\a \b]
 
     ;; recursion
-    [:S (alt eps (cat :S \a))] "aa" [[nil \a] \a]
-    [:S (alt eps (cat \a :S))] "aa" [\a [\a nil]])
+    [:S (alt eps (cat :S \a))] "aa" [[\a] \a]
+    [:S (alt eps (cat \a :S))] "aa" [\a [\a]])
 
   ;; Reducers
   (is (= [1] (parse (red \1 #(Integer/parseInt (str %))) "1"))))

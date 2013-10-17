@@ -136,7 +136,10 @@
 (ann-record Epsilon [val :- ParseForest])
 (defrecord Epsilon [val]
   Parser
-  (-graph-label [_] ["ε" (graph/escape-string (pr-str val))])
+  (-graph-label [_]
+    (if (= val [::no-result])
+      "ε"
+      ["ε" (graph/escape-string (pr-str val))]))
   (-children [_] #{})
   (-parse-null [_] val)
   (-derivative [_ c] empty)
@@ -145,7 +148,7 @@
   (-compact [this] this))
 
 (ann eps Epsilon)
-(def eps (->Epsilon '(nil)))
+(def eps (->Epsilon '(::no-result)))
 
 (ann eps* [ParseForest -> Epsilon])
 (defn eps* [trees] (->Epsilon trees))
