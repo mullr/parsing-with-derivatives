@@ -4,37 +4,36 @@
             [parsing-with-derivatives.core :refer :all]
             [clojure.core.typed :refer [check-ns]]))
 
-(def left-recursive-as  (grammar->parser {:S (alt eps (cat :S \a))} :S))
-(def right-recursive-as (grammar->parser {:S (alt eps (cat \a :S))} :S))
+(deftest parsing
+  (are [parser str first-ast] (= [first-ast] (parse parser str))
+    \a "a" \a
+
+    (cat \a \b)          "ab"  [\a \b]
+    (cat \a (cat \b \c)) "abc" [\a [\b \c]]
+    (cat (cat \a \b) \c) "abc" [[\a \b] \c]
+
+    (star \a) "aaa" [\a [\a [\a]]]
+
+    ;; Atom as parser
+    (atom \a) "a" \a
+
+    ;; grammar
+    [:S \a] "a" \a
+    [:S (cat \a \b)] "ab" [\a \b]
+
+    ;; recursion
+    [:S (alt eps (cat :S \a))] "aa" [[nil \a] \a]
+    [:S (alt eps (cat \a :S))] "aa" [\a [\a nil]])
+
+  ;; Reducers
+  (is (= [1] (parse (red \1 #(Integer/parseInt (str %))) "1"))))
 
 (defn graph-size-with [parser input]
   (graph-size (full-derivative parser input)))
 
-(deftest parsing
-  (is (= [\a] (parse \a "a")))
-  (is (= [[\a \b]] (parse (cat \a \b) "ab")))
-  (is (= [[\a \b]] (parse (cat \a \b) "ab")))
-  (is (= [[\a [\b \c]]] (parse (cat \a (cat \b \c)) "abc")))
-  (is (= [[[\a \b] \c]] (parse (cat (cat \a \b) \c) "abc")))
-  (is (= [[\a [\a [\a nil]]]  (parse (star \a) "aaa")]))
-
-  ;; Reducers
-  (is (= [1] (parse (red \1 #(Integer/parseInt (str %))) "1")))
-
-  ;; Atom as parser
-  (is (= [\a] (parse (atom \a) "a")))
- 
-  ;; grammar
-  (is (= [\a] (parse {:S \a} :S "a")))
-  (is (= [[\a \b]] (parse {:S (cat \a \b)} :S "ab")))
-
-  ;; recursion
-  (is (= [[[nil \a] \a]] (parse left-recursive-as  "aa")))
-  (is (= [[\a [\a nil]]] (parse right-recursive-as "aa")))
-
+(deftest graph-growth
   (is (> 15 (graph-size-with left-recursive-as (repeat 25 \a))))
-  (is (> 15 (graph-size-with right-recursive-as (repeat 25 \a))))
-)
+  (is (> 15 (graph-size-with right-recursive-as (repeat 25 \a)))))
 
 (def expression
   {:digit (reduce alt [\1 \2 \3 \4 \5 \6 \7 \8 \9 \0])
