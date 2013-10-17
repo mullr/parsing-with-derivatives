@@ -4,10 +4,6 @@
             [parsing-with-derivatives.core :refer :all]
             [clojure.core.typed :refer [check-ns]]))
 
-
-(deftest typecheck
-  (is (check-ns 'parsing-with-derivatives.core)))
-
 (def left-recursive-as  (grammar->parser {:S (alt eps (cat :S \a))} :S))
 (def right-recursive-as (grammar->parser {:S (alt eps (cat \a :S))} :S))
 

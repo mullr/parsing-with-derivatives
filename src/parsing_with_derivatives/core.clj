@@ -1,6 +1,7 @@
 (ns parsing-with-derivatives.core
   (:refer-clojure :exclude [empty] :rename {empty? empty-coll?})
   (:require [clojure.core.typed :refer :all]
+            [parsing-with-derivatives.protocols :refer :all]
             [parsing-with-derivatives.fixpoint :refer :all]
             [clojure.set :as s]
             [rhizome.viz :refer :all]
@@ -26,13 +27,6 @@
 (ann ^:no-check parsing-with-derivatives.fixpoint/fix-memo
      (All [x y] [y [x -> y] -> [x -> y]]))
 
-;; General parser types
-;; In principle this whole library can be generic over the token type
-(def-alias Token Character)
-(def-alias ParseTree (Option (U Token (Seqable ParseTree) (Value ::no-result))))
-(def-alias ParseForest (Seqable ParseTree))
-(def-alias ReducerFn [ParseTree -> ParseTree])
-
 (ann ^:no-check parse-tree [ParseTree ParseTree -> ParseTree])
 (defn parse-tree "Parse tree constructor" [x y]
   (cond
@@ -42,24 +36,6 @@
    (:merge (meta x)) (concat x [y])
    (:merge (meta y)) (cons x y)
    :default [x y]))
-
-(ann-protocol Parser
-  -graph-label [Parser -> (U String (Vec String))]
-  -children [Parser -> (Seqable Parser)]
-  -parse-null [Parser -> ParseForest]
-  -derivative [Parser Token -> Parser]
-  -is-null? [Parser -> Boolean]
-  -is-empty? [Parser -> Boolean]
-  -compact [Parser -> Parser])
-
-(defprotocol> Parser
-  (-graph-label [this]   "The parser's label in the debug graph. ")
-  (-children    [this]   "A sequence of the parsers referred to directly by this one")
-  (-parse-null  [this]   "Run the null parse; i.e. get the results out of this parser.")
-  (-derivative  [this c] "Parser derivative.")
-  (-is-null?    [this]   "Does this parser accept the empty string?")
-  (-is-empty?   [this]   "Is this the empty parser, or equivalent?")
-  (-compact     [this]   "Parser compaction"))
 
 (ann ^:no-check parser?
      [Any -> Boolean :filters {:then (is Parser 0), :else (! Parser 0)}])
