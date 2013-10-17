@@ -271,7 +271,7 @@
 (defrecord Red [p1 f]
   Parser
   (-graph-label [_] [(str "→"
-                          (try (graph/escape-string (str (f \%)))
+                          (try (graph/escape-string (pr-str (f \%)))
                                (catch Exception e "_")))])
   (-children [_] #{p1})
   (-parse-null [_] (map f (parse-null p1)))
