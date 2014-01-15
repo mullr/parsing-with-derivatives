@@ -1,8 +1,7 @@
 (ns parsing-with-derivatives.core-test
   (:refer-clojure :exclude [empty] :rename {empty? empty-coll?})
   (:require [clojure.test :refer :all]
-            [parsing-with-derivatives.core :refer :all]
-            [clojure.core.typed :refer [check-ns]]))
+            [parsing-with-derivatives.core :refer :all]))
 
 (deftest parsing
   (are [parser str first-ast] (= [first-ast] (parse parser str))
